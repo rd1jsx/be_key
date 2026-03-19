@@ -1,0 +1,314 @@
+extends ../layout
+
+block content
+  .page
+    //- Alerts
+    if success && success.length
+      .alert.alert-success
+        i.fas.fa-check-circle
+        span= success[0]
+    if error && error.length
+      .alert.alert-error
+        i.fas.fa-exclamation-circle
+        span= error[0]
+
+    //- Stats row
+    - const totalKeys = keys.length
+    - const activeKeys = keys.filter(k => k.active).length
+    - const totalDevices = keys.reduce((s, k) => s + k.devices.length, 0)
+    .stats
+      .stat-card.s-primary
+        .stat-label Tổng key
+        .stat-value= totalKeys
+      .stat-card.s-success
+        .stat-label Đang hoạt động
+        .stat-value= activeKeys
+      .stat-card.s-danger
+        .stat-label Đã tắt
+        .stat-value= totalKeys - activeKeys
+      .stat-card
+        .stat-label Thiết bị đăng ký
+        .stat-value= totalDevices
+
+    //- Main card
+    .card
+      .card-header
+        i.fas.fa-key(style="color:var(--primary)")
+        span.card-title Danh sách Key
+        div(style="flex:1")
+        button.btn.btn-primary.btn-sm(onclick="openModal('modal-create')")
+          i.fas.fa-plus
+          |  Tạo key mới
+
+      .card-body(style="padding:0")
+        .table-wrap
+          table
+            thead
+              tr
+                th #
+                th Value (Key)
+                th Họ tên
+                th SĐT
+                th Thiết bị
+                th Hết hạn
+                th Trạng thái
+                th Thao tác
+            tbody
+              if keys.length === 0
+                tr
+                  td(colspan="8" style="text-align:center;padding:32px;color:var(--text3)")
+                    i.fas.fa-inbox(style="font-size:24px;display:block;margin-bottom:8px;opacity:.4")
+                    | Chưa có key nào
+              each key, i in keys
+                tr
+                  td(style="color:var(--text3)")= i + 1
+                  td
+                    code(style="background:var(--surface2);padding:3px 8px;border-radius:5px;font-size:12px;color:var(--primary)")= key.value
+                  td(style="font-weight:500")= key.ten
+                  td= key.sdt
+                  td
+                    span(class=(key.devices.length >= key.max_devices ? 'badge badge-red' : 'badge badge-blue'))
+                      | #{key.devices.length}/#{key.max_devices}
+                    if key.devices.length > 0
+                      button.btn.btn-ghost.btn-sm(
+                        style="margin-left:6px"
+                        onclick=`showDevices('${key._id}', ${JSON.stringify(key.devices)})`
+                        title="Xem thiết bị"
+                      )
+                        i.fas.fa-laptop
+                  td
+                    if !key.expiresAt
+                      span(style="color:var(--text3);font-size:12px") Vĩnh viễn
+                    else
+                      - var exp = new Date(key.expiresAt)
+                      - var expired = exp < new Date()
+                      span(class=expired ? 'badge badge-red' : 'badge badge-green')
+                        = exp.toLocaleDateString('vi-VN')
+                  td
+                    span(class=key.active ? 'badge badge-green' : 'badge badge-red')
+                      i(class=key.active ? 'fas fa-circle' : 'fas fa-ban' style="font-size:9px")
+                      |  #{key.active ? 'Bật' : 'Tắt'}
+                  td
+                    div(style="display:flex;gap:6px;flex-wrap:wrap")
+                      button.btn.btn-ghost.btn-sm(
+                        title="Sửa"
+                        onclick=`editKey('${key._id}','${key.value}','${key.ten}','${key.sdt}',${key.max_devices},${key.active},'${key.expiresAt || ''}')`
+                      )
+                        i.fas.fa-edit
+                      button.btn.btn-success.btn-sm(
+                        title="Reset thiết bị"
+                        onclick=`resetDevices('${key._id}')`
+                      )
+                        i.fas.fa-undo
+                      button.btn.btn-danger.btn-sm(
+                        title="Xoá key"
+                        onclick=`deleteKey('${key._id}')`
+                      )
+                        i.fas.fa-trash
+
+    //- ── MODAL: Tạo key mới ──
+    #modal-create.modal-overlay(onclick="if(event.target===this)closeModal('modal-create')")
+      .modal
+        .modal-title
+          i.fas.fa-plus-circle(style="color:var(--primary);margin-right:8px")
+          | Tạo key mới
+        p(style="font-size:12.5px;color:var(--text3);margin-bottom:16px;margin-top:-8px")
+          i.fas.fa-magic(style="margin-right:5px")
+          | Key sẽ được tự động sinh ngẫu nhiên 12 ký tự
+        #form-create
+          .row
+            .field
+              label Họ tên
+              input#c-ten(type="text" placeholder="Nguyễn Văn A")
+            .field
+              label Số điện thoại
+              input#c-sdt(type="text" placeholder="0901234567")
+          .row
+            .field
+              label Số thiết bị tối đa
+              input#c-max(type="number" value="1" min="1")
+            .field
+              label Ngày hết hạn (để trống = vĩnh viễn)
+              input#c-expires(type="date")
+        .modal-footer
+          button.btn.btn-ghost(type="button" onclick="closeModal('modal-create')") Huỷ
+          button.btn.btn-primary(type="button" onclick="submitCreate()")
+            i.fas.fa-save
+            |  Tạo key
+
+    //- ── MODAL: Sửa key ──
+    #modal-edit.modal-overlay(onclick="if(event.target===this)closeModal('modal-edit')")
+      .modal
+        .modal-title
+          i.fas.fa-edit(style="color:var(--primary);margin-right:8px")
+          | Sửa key
+        #form-edit
+          input#e-id(type="hidden")
+          .row
+            .field
+              label Value (Key)
+              input#e-value(type="text" disabled style="opacity:.5")
+            .field
+              label Số thiết bị tối đa
+              input#e-max(type="number" min="1")
+          .row
+            .field
+              label Họ tên
+              input#e-ten(type="text")
+            .field
+              label Số điện thoại
+              input#e-sdt(type="text")
+          .row
+            .field
+              label Ngày hết hạn
+              input#e-expires(type="date")
+            .field
+              label Trạng thái
+              select#e-active
+                option(value="true") Đang bật
+                option(value="false") Tắt
+        .modal-footer
+          button.btn.btn-ghost(type="button" onclick="closeModal('modal-edit')") Huỷ
+          button.btn.btn-primary(type="button" onclick="submitEdit()")
+            i.fas.fa-save
+            |  Lưu
+
+    //- ── MODAL: Xem devices ──
+    #modal-devices.modal-overlay(onclick="if(event.target===this)closeModal('modal-devices')")
+      .modal
+        .modal-title
+          i.fas.fa-laptop(style="color:var(--primary);margin-right:8px")
+          | Thiết bị đã đăng ký
+        #device-list
+        .modal-footer
+          button.btn.btn-ghost(type="button" onclick="closeModal('modal-devices')") Đóng
+          button.btn.btn-danger(type="button" id="btn-reset-devices")
+            i.fas.fa-trash
+            |  Reset tất cả thiết bị
+
+block scripts
+  script.
+    // ── Devices modal ──
+    function showDevices(keyId, devices) {
+      const list = document.getElementById('device-list');
+      if (!devices.length) {
+        list.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:20px 0">Chưa có thiết bị nào</p>';
+      } else {
+        list.innerHTML = devices.map(d => `
+          <div class="device-item">
+            <div class="device-id">${d.deviceId}</div>
+            <div class="device-date">${new Date(d.registeredAt).toLocaleString('vi-VN')}</div>
+            <button class="btn btn-danger btn-sm" onclick="removeDevice('${keyId}','${encodeURIComponent(d.deviceId)}')">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>`).join('');
+      }
+      document.getElementById('btn-reset-devices').onclick = () => resetDevices(keyId);
+      openModal('modal-devices');
+    }
+
+    async function removeDevice(keyId, deviceId) {
+      if (!confirm('Xoá device này?')) return;
+      const r = await fetch(`/admin/api/keys/${keyId}/devices/${deviceId}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (d.ok) { alert('Đã xoá device'); location.reload(); }
+      else alert('Lỗi: ' + d.message);
+    }
+
+    async function resetDevices(keyId) {
+      if (!confirm('Reset toàn bộ thiết bị của key này?')) return;
+      const r = await fetch(`/admin/api/keys/${keyId}/devices`, { method: 'DELETE' });
+      const d = await r.json();
+      if (d.ok) { alert('Đã reset thiết bị'); location.reload(); }
+      else alert('Lỗi: ' + d.message);
+    }
+
+    // ── Create ──
+    async function submitCreate() {
+      const ten = document.getElementById('c-ten').value.trim();
+      const sdt = document.getElementById('c-sdt').value.trim();
+      const max_devices = document.getElementById('c-max').value;
+      const expiresAt = document.getElementById('c-expires').value;
+      if (!ten || !sdt || !max_devices) return alert('Vui lòng điền đầy đủ thông tin!');
+      const body = { ten, sdt, max_devices };
+      if (expiresAt) body.expiresAt = expiresAt;
+      const r = await fetch('/admin/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const d = await r.json();
+      if (d.ok) {
+        closeModal('modal-create');
+        // Hiện key được sinh ra để admin copy
+        const generatedKey = d.data.value;
+        showKeyCreated(generatedKey, ten);
+      } else {
+        alert('Lỗi: ' + d.message);
+      }
+    }
+
+    function showKeyCreated(key, ten) {
+      // Tạo overlay thông báo tạm thời
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;display:flex;align-items:center;justify-content:center;';
+      overlay.innerHTML = `
+        <div style="background:#1a1d27;border:1px solid #2e3250;border-radius:14px;padding:32px 36px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)">
+          <div style="font-size:40px;margin-bottom:12px">🎉</div>
+          <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-bottom:6px">Key đã được tạo!</div>
+          <div style="font-size:13px;color:#94a3b8;margin-bottom:20px">Cho <b style="color:#e2e8f0">${ten}</b></div>
+          <div style="background:#0f1117;border:1.5px solid #6366f1;border-radius:10px;padding:14px 18px;margin-bottom:20px">
+            <div style="font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Key kích hoạt</div>
+            <div id="gen-key-val" style="font-size:22px;font-weight:800;font-family:monospace;color:#6366f1;letter-spacing:.15em">${key}</div>
+          </div>
+          <div style="display:flex;gap:10px;justify-content:center">
+            <button onclick="navigator.clipboard.writeText('${key}').then(()=>{this.textContent='✔ Đã copy!';setTimeout(()=>{this.textContent='📋 Copy key'},1500)})"
+              style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+              📋 Copy key
+            </button>
+            <button onclick="this.closest('div[style*=fixed]').remove();location.reload()"
+              style="background:#22263a;color:#94a3b8;border:1px solid #2e3250;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
+              Đóng
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+    }
+
+    // ── Edit ──
+    function editKey(id, value, ten, sdt, max_devices, active, expiresAt) {
+      document.getElementById('e-id').value = id;
+      document.getElementById('e-value').value = value;
+      document.getElementById('e-ten').value = ten;
+      document.getElementById('e-sdt').value = sdt;
+      document.getElementById('e-max').value = max_devices;
+      document.getElementById('e-active').value = String(active);
+      document.getElementById('e-expires').value = expiresAt ? expiresAt.slice(0,10) : '';
+      openModal('modal-edit');
+    }
+
+    async function submitEdit() {
+      const id = document.getElementById('e-id').value;
+      const ten = document.getElementById('e-ten').value.trim();
+      const sdt = document.getElementById('e-sdt').value.trim();
+      const max_devices = Number(document.getElementById('e-max').value);
+      const active = document.getElementById('e-active').value === 'true';
+      const expiresAt = document.getElementById('e-expires').value || null;
+      const r = await fetch(`/admin/api/keys/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ten, sdt, max_devices, active, expiresAt }),
+      });
+      const d = await r.json();
+      if (d.ok) { closeModal('modal-edit'); location.reload(); }
+      else alert('Lỗi: ' + d.message);
+    }
+
+    // ── Delete ──
+    async function deleteKey(id) {
+      if (!confirm('Xoá key này? Hành động không thể hoàn tác!')) return;
+      const r = await fetch(`/admin/api/keys/${id}`, { method: 'DELETE' });
+      const d = await r.json();
+      if (d.ok) location.reload();
+      else alert('Lỗi: ' + d.message);
+    }

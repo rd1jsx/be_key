@@ -1,0 +1,57 @@
+doctype html
+html(lang="vi")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width,initial-scale=1")
+    title Đăng nhập Admin — Key Manager
+    link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")
+    style.
+      :root {
+        --bg:#0f1117; --surface:#1a1d27; --border:#2e3250;
+        --primary:#6366f1; --primary-h:#4f52d6;
+        --danger-l:rgba(239,68,68,.12); --danger:#ef4444;
+        --text:#e2e8f0; --text2:#94a3b8;
+      }
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text);
+        min-height:100vh; display:flex; align-items:center; justify-content:center; }
+      .login-box { background:var(--surface); border:1px solid var(--border); border-radius:16px;
+        padding:40px 36px; width:100%; max-width:400px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+      .login-logo { text-align:center; margin-bottom:28px; }
+      .login-logo i { font-size:40px; color:var(--primary); }
+      .login-logo h1 { font-size:20px; font-weight:700; margin-top:10px; }
+      .login-logo p { font-size:13px; color:var(--text2); margin-top:4px; }
+      .field { margin-bottom:16px; }
+      label { display:block; font-size:12px; font-weight:600; color:var(--text2);
+        margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }
+      input { width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px;
+        background:rgba(255,255,255,.05); color:var(--text); font-size:14px; outline:none;
+        transition:border-color .15s; font-family:inherit; }
+      input:focus { border-color:var(--primary); }
+      .btn { width:100%; padding:11px; background:var(--primary); color:#fff; border:none;
+        border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;
+        transition:background .15s; font-family:inherit; margin-top:8px; }
+      .btn:hover { background:var(--primary-h); }
+      .alert-error { background:var(--danger-l); border:1px solid rgba(239,68,68,.3);
+        color:#fca5a5; padding:10px 14px; border-radius:8px; font-size:13px;
+        margin-bottom:18px; display:flex; align-items:center; gap:8px; }
+  body
+    .login-box
+      .login-logo
+        i.fas.fa-key
+        h1 Key Manager
+        p Đăng nhập admin
+      if error && error.length
+        .alert-error
+          i.fas.fa-exclamation-circle
+          span= error[0]
+      form(method="POST" action="/admin/login")
+        .field
+          label Tài khoản
+          input(type="text" name="username" placeholder="admin" autocomplete="username" autofocus)
+        .field
+          label Mật khẩu
+          input(type="password" name="password" placeholder="••••••••" autocomplete="current-password")
+        button.btn(type="submit")
+          i.fas.fa-sign-in-alt
+          |  Đăng nhập
