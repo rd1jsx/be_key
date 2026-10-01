@@ -4,54 +4,75 @@ html(lang="vi")
     meta(charset="utf-8")
     meta(name="viewport" content="width=device-width,initial-scale=1")
     title Đăng nhập Admin — Key Manager
+    link(rel="preconnect" href="https://fonts.googleapis.com")
+    link(rel="preconnect" href="https://fonts.gstatic.com" crossorigin)
+    link(rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap")
     link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css")
     style.
       :root {
-        --bg:#0f1117; --surface:#1a1d27; --border:#2e3250;
-        --primary:#6366f1; --primary-h:#4f52d6;
-        --danger-l:rgba(239,68,68,.12); --danger:#ef4444;
-        --text:#e2e8f0; --text2:#94a3b8;
+        --surface:#fff; --border:#d5dbe7;
+        --primary:#4f46e5; --primary-h:#4338ca;
+        --danger-l:#fef2f2; --danger:#b91c1c;
+        --text:#0f172a; --text2:#475569; --text3:#94a3b8;
       }
       * { box-sizing:border-box; margin:0; padding:0; }
-      body { font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text);
-        min-height:100vh; display:flex; align-items:center; justify-content:center; }
-      .login-box { background:var(--surface); border:1px solid var(--border); border-radius:16px;
-        padding:40px 36px; width:100%; max-width:400px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
-      .login-logo { text-align:center; margin-bottom:28px; }
-      .login-logo i { font-size:40px; color:var(--primary); }
-      .login-logo h1 { font-size:20px; font-weight:700; margin-top:10px; }
-      .login-logo p { font-size:13px; color:var(--text2); margin-top:4px; }
+      body { font-family:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif; color:var(--text); -webkit-font-smoothing:antialiased;
+        min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px;
+        background:
+          radial-gradient(900px 500px at 10% -10%, #e0e7ff 0%, transparent 60%),
+          radial-gradient(800px 500px at 110% 110%, #ede9fe 0%, transparent 60%),
+          #f5f7fb; }
+      .login-box { background:var(--surface); border:1px solid #e5e9f2; border-radius:20px;
+        padding:40px 36px 36px; width:100%; max-width:410px;
+        box-shadow:0 1px 3px rgba(15,23,42,.06), 0 30px 60px -20px rgba(15,23,42,.18); }
+      .logo { width:54px; height:54px; border-radius:16px; margin:0 auto; display:grid; place-items:center;
+        color:#fff; font-size:22px; background:linear-gradient(135deg,#6366f1,#8b5cf6);
+        box-shadow:0 10px 24px -8px rgba(99,102,241,.6); }
+      .head { text-align:center; margin-bottom:28px; }
+      .head h1 { font-size:22px; font-weight:800; letter-spacing:-.02em; margin-top:16px; }
+      .head p { font-size:13.5px; color:var(--text2); margin-top:6px; }
       .field { margin-bottom:16px; }
-      label { display:block; font-size:12px; font-weight:600; color:var(--text2);
-        margin-bottom:6px; text-transform:uppercase; letter-spacing:.04em; }
-      input { width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px;
-        background:rgba(255,255,255,.05); color:var(--text); font-size:14px; outline:none;
-        transition:border-color .15s; font-family:inherit; }
-      input:focus { border-color:var(--primary); }
-      .btn { width:100%; padding:11px; background:var(--primary); color:#fff; border:none;
-        border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;
-        transition:background .15s; font-family:inherit; margin-top:8px; }
+      label { display:block; font-size:12.5px; font-weight:600; color:var(--text2); margin-bottom:6px; }
+      .input-icon { position:relative; }
+      .input-icon i { position:absolute; left:13px; top:50%; transform:translateY(-50%); color:var(--text3); font-size:13px; }
+      input { width:100%; padding:11px 14px 11px 38px; border:1px solid var(--border); border-radius:11px;
+        background:#fff; color:var(--text); font-size:14px; outline:none; font-family:inherit;
+        transition:border-color .15s, box-shadow .15s; }
+      input:focus { border-color:var(--primary); box-shadow:0 0 0 4px rgba(79,70,229,.12); }
+      .btn { width:100%; padding:12px; background:var(--primary); color:#fff; border:none;
+        border-radius:11px; font-size:14px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+        transition:background .15s; font-family:inherit; margin-top:8px; box-shadow:0 6px 16px -6px rgba(79,70,229,.6); }
       .btn:hover { background:var(--primary-h); }
-      .alert-error { background:var(--danger-l); border:1px solid rgba(239,68,68,.3);
-        color:#fca5a5; padding:10px 14px; border-radius:8px; font-size:13px;
+      .alert-error { background:var(--danger-l); border:1px solid #fecaca;
+        color:var(--danger); padding:11px 14px; border-radius:11px; font-size:13px;
         margin-bottom:18px; display:flex; align-items:center; gap:8px; }
+      .foot { text-align:center; font-size:12px; color:var(--text3); margin-top:22px; display:flex; align-items:center; justify-content:center; gap:6px; }
   body
     .login-box
-      .login-logo
-        i.fas.fa-key
+      .head
+        .logo
+          i.fas.fa-key
         h1 Key Manager
-        p Đăng nhập admin
+        p Đăng nhập để quản lý key kích hoạt
       if error && error.length
         .alert-error
-          i.fas.fa-exclamation-circle
-          span= error[0]
-      form(method="POST" action="/admin/login")
+          i.fas.fa-circle-exclamation
+          span= error[error.length - 1]
+      form(method="POST" action="/admin/login" autocomplete="on")
+        input(type="hidden" name="_csrf" value=csrfToken)
         .field
-          label Tài khoản
-          input(type="text" name="username" placeholder="admin" autocomplete="username" autofocus)
+          label(for="username") Tài khoản
+          .input-icon
+            i.fas.fa-user
+            input#username(type="text" name="username" placeholder="admin" autocomplete="username" required maxlength="100" autofocus)
         .field
-          label Mật khẩu
-          input(type="password" name="password" placeholder="••••••••" autocomplete="current-password")
+          label(for="password") Mật khẩu
+          .input-icon
+            i.fas.fa-lock
+            input#password(type="password" name="password" placeholder="••••••••" autocomplete="current-password" required maxlength="256")
         button.btn(type="submit")
-          i.fas.fa-sign-in-alt
-          |  Đăng nhập
+          i.fas.fa-right-to-bracket
+          | Đăng nhập
+      .foot
+        i.fas.fa-shield-halved
+        | Tự động khoá tạm thời sau 5 lần đăng nhập sai

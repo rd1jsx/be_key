@@ -1,314 +1,465 @@
 extends ../layout
 
 block content
-  .page
+  //- Ngày tính theo giờ Việt Nam
+  - const TZ = 'Asia/Ho_Chi_Minh'
+  - const isoDate = d => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d)
+  - const viDate = d => d.toLocaleDateString('vi-VN', { timeZone: TZ, day: '2-digit', month: '2-digit', year: 'numeric' })
+  - const now = new Date()
+  - const SOON = 7 * 24 * 60 * 60 * 1000
+
+  main.page
     //- Alerts
     if success && success.length
       .alert.alert-success
-        i.fas.fa-check-circle
+        i.fas.fa-circle-check
         span= success[0]
     if error && error.length
       .alert.alert-error
-        i.fas.fa-exclamation-circle
+        i.fas.fa-circle-exclamation
         span= error[0]
+
+    .page-head
+      div
+        h1 Quản lý Key
+        p Tạo, chỉnh sửa và theo dõi thiết bị của từng key kích hoạt
+      button#btn-create.btn.btn-primary(type="button")
+        i.fas.fa-plus
+        | Tạo key mới
 
     //- Stats row
     - const totalKeys = keys.length
-    - const activeKeys = keys.filter(k => k.active).length
+    - const activeKeys = keys.filter(k => k.active && !(k.expiresAt && new Date(k.expiresAt) < now)).length
+    - const expiredKeys = keys.filter(k => k.expiresAt && new Date(k.expiresAt) < now).length
     - const totalDevices = keys.reduce((s, k) => s + k.devices.length, 0)
     .stats
       .stat-card.s-primary
-        .stat-label Tổng key
-        .stat-value= totalKeys
+        .stat-icon: i.fas.fa-key
+        div
+          .stat-label Tổng key
+          .stat-value= totalKeys
       .stat-card.s-success
-        .stat-label Đang hoạt động
-        .stat-value= activeKeys
+        .stat-icon: i.fas.fa-circle-check
+        div
+          .stat-label Đang hoạt động
+          .stat-value= activeKeys
       .stat-card.s-danger
-        .stat-label Đã tắt
-        .stat-value= totalKeys - activeKeys
-      .stat-card
-        .stat-label Thiết bị đăng ký
-        .stat-value= totalDevices
+        .stat-icon: i.fas.fa-hourglass-end
+        div
+          .stat-label Đã hết hạn
+          .stat-value= expiredKeys
+      .stat-card.s-warning
+        .stat-icon: i.fas.fa-laptop
+        div
+          .stat-label Thiết bị đăng ký
+          .stat-value= totalDevices
 
     //- Main card
     .card
-      .card-header
-        i.fas.fa-key(style="color:var(--primary)")
-        span.card-title Danh sách Key
-        div(style="flex:1")
-        button.btn.btn-primary.btn-sm(onclick="openModal('modal-create')")
-          i.fas.fa-plus
-          |  Tạo key mới
+      .toolbar
+        h2 Danh sách key
+        .input-icon(style="min-width:240px")
+          i.fas.fa-magnifying-glass
+          input#search.input(type="search" placeholder="Tìm key, tên, SĐT…")
+        select#filter.input(style="width:auto")
+          option(value="all") Tất cả trạng thái
+          option(value="active") Đang hoạt động
+          option(value="soon") Sắp hết hạn
+          option(value="expired") Đã hết hạn
+          option(value="off") Đã tắt
 
-      .card-body(style="padding:0")
-        .table-wrap
-          table
-            thead
+      .table-wrap
+        table
+          thead
+            tr
+              th Key
+              th Chủ key
+              th Thiết bị
+              th Hết hạn
+              th Trạng thái
+              th(style="text-align:right") Thao tác
+          tbody#key-rows
+            if keys.length === 0
               tr
-                th #
-                th Value (Key)
-                th Họ tên
-                th SĐT
-                th Thiết bị
-                th Hết hạn
-                th Trạng thái
-                th Thao tác
-            tbody
-              if keys.length === 0
-                tr
-                  td(colspan="8" style="text-align:center;padding:32px;color:var(--text3)")
-                    i.fas.fa-inbox(style="font-size:24px;display:block;margin-bottom:8px;opacity:.4")
-                    | Chưa có key nào
-              each key, i in keys
-                tr
-                  td(style="color:var(--text3)")= i + 1
-                  td
-                    code(style="background:var(--surface2);padding:3px 8px;border-radius:5px;font-size:12px;color:var(--primary)")= key.value
-                  td(style="font-weight:500")= key.ten
-                  td= key.sdt
-                  td
-                    span(class=(key.devices.length >= key.max_devices ? 'badge badge-red' : 'badge badge-blue'))
-                      | #{key.devices.length}/#{key.max_devices}
+                td.empty(colspan="6")
+                  i.fas.fa-inbox
+                  | Chưa có key nào — bấm “Tạo key mới” để bắt đầu
+            each key in keys
+              - const exp = key.expiresAt ? new Date(key.expiresAt) : null
+              - const expired = exp && exp < now
+              - const soon = exp && !expired && exp - now < SOON
+              - const full = key.devices.length >= key.max_devices
+              - const status = !key.active ? 'off' : expired ? 'expired' : soon ? 'soon' : 'active'
+              tr(
+                data-id=String(key._id)
+                data-value=key.value
+                data-ten=key.ten
+                data-sdt=key.sdt
+                data-max=key.max_devices
+                data-active=String(key.active)
+                data-expires=exp ? isoDate(exp) : ''
+                data-devices=JSON.stringify(key.devices.map(d => ({ deviceId: d.deviceId, registeredAt: d.registeredAt })))
+                data-status=status
+                data-search=(key.value + ' ' + key.ten + ' ' + key.sdt).toLowerCase()
+              )
+                td
+                  span.key-code
+                    = key.value
+                    button(type="button" data-action="copy" title="Copy key")
+                      i.far.fa-copy
+                td
+                  .owner-name= key.ten
+                  .owner-phone
+                    i.fas.fa-phone(style="font-size:10px;margin-right:5px;opacity:.6")
+                    = key.sdt
+                td
+                  .meter(class=full ? 'full' : '')
+                    .meter-bar
+                      span(style=`width:${Math.min(100, key.devices.length / key.max_devices * 100)}%`)
+                    span.meter-text #{key.devices.length}/#{key.max_devices}
                     if key.devices.length > 0
-                      button.btn.btn-ghost.btn-sm(
-                        style="margin-left:6px"
-                        onclick=`showDevices('${key._id}', ${JSON.stringify(key.devices)})`
-                        title="Xem thiết bị"
-                      )
-                        i.fas.fa-laptop
-                  td
-                    if !key.expiresAt
-                      span(style="color:var(--text3);font-size:12px") Vĩnh viễn
-                    else
-                      - var exp = new Date(key.expiresAt)
-                      - var expired = exp < new Date()
-                      span(class=expired ? 'badge badge-red' : 'badge badge-green')
-                        = exp.toLocaleDateString('vi-VN')
-                  td
-                    span(class=key.active ? 'badge badge-green' : 'badge badge-red')
-                      i(class=key.active ? 'fas fa-circle' : 'fas fa-ban' style="font-size:9px")
-                      |  #{key.active ? 'Bật' : 'Tắt'}
-                  td
-                    div(style="display:flex;gap:6px;flex-wrap:wrap")
-                      button.btn.btn-ghost.btn-sm(
-                        title="Sửa"
-                        onclick=`editKey('${key._id}','${key.value}','${key.ten}','${key.sdt}',${key.max_devices},${key.active},'${key.expiresAt || ''}')`
-                      )
-                        i.fas.fa-edit
-                      button.btn.btn-success.btn-sm(
-                        title="Reset thiết bị"
-                        onclick=`resetDevices('${key._id}')`
-                      )
-                        i.fas.fa-undo
-                      button.btn.btn-danger.btn-sm(
-                        title="Xoá key"
-                        onclick=`deleteKey('${key._id}')`
-                      )
-                        i.fas.fa-trash
+                      button.meter-link(type="button" data-action="devices") Xem
+                td
+                  if !exp
+                    span.badge.badge-blue.plain
+                      i.fas.fa-infinity
+                      | Vĩnh viễn
+                  else
+                    span.badge.plain(class=expired ? 'badge-red' : soon ? 'badge-yellow' : 'badge-gray')
+                      i.far.fa-calendar
+                      = viDate(exp)
+                td
+                  if !key.active
+                    span.badge.badge-gray Đã tắt
+                  else if expired
+                    span.badge.badge-red Hết hạn
+                  else if soon
+                    span.badge.badge-yellow Sắp hết hạn
+                  else
+                    span.badge.badge-green Hoạt động
+                td
+                  .actions
+                    button.icon-btn.primary(type="button" data-action="edit" title="Sửa")
+                      i.fas.fa-pen
+                    button.icon-btn.success(type="button" data-action="reset" title="Reset thiết bị")
+                      i.fas.fa-rotate-left
+                    button.icon-btn.danger(type="button" data-action="delete" title="Xoá key")
+                      i.fas.fa-trash-can
+            if keys.length
+              tr#no-match(hidden)
+                td.empty(colspan="6")
+                  i.fas.fa-magnifying-glass
+                  | Không tìm thấy key phù hợp
 
-    //- ── MODAL: Tạo key mới ──
-    #modal-create.modal-overlay(onclick="if(event.target===this)closeModal('modal-create')")
+    //- ── MODAL: Tạo / sửa key ──
+    #modal-key.modal-overlay
       .modal
-        .modal-title
-          i.fas.fa-plus-circle(style="color:var(--primary);margin-right:8px")
-          | Tạo key mới
-        p(style="font-size:12.5px;color:var(--text3);margin-bottom:16px;margin-top:-8px")
-          i.fas.fa-magic(style="margin-right:5px")
-          | Key sẽ được tự động sinh ngẫu nhiên 12 ký tự
-        #form-create
+        .modal-head
+          .m-icon: i#m-key-icon.fas.fa-plus
+          div
+            h3#m-key-title Tạo key mới
+            p#m-key-sub Key sẽ được sinh ngẫu nhiên 12 ký tự
+          button.icon-btn(type="button" data-close="modal-key" title="Đóng"): i.fas.fa-xmark
+        form#form-key.modal-body(novalidate)
+          input#f-id(type="hidden")
+          #f-value-wrap.field(hidden)
+            label Key
+            input#f-value.input.mono(type="text" disabled)
           .row
             .field
-              label Họ tên
-              input#c-ten(type="text" placeholder="Nguyễn Văn A")
+              label(for="f-ten") Họ tên
+              input#f-ten.input(type="text" placeholder="Nguyễn Văn A" maxlength="200" required)
             .field
-              label Số điện thoại
-              input#c-sdt(type="text" placeholder="0901234567")
+              label(for="f-sdt") Số điện thoại
+              input#f-sdt.input(type="tel" placeholder="0901234567" maxlength="30" required)
           .row
             .field
-              label Số thiết bị tối đa
-              input#c-max(type="number" value="1" min="1")
-            .field
-              label Ngày hết hạn (để trống = vĩnh viễn)
-              input#c-expires(type="date")
-        .modal-footer
-          button.btn.btn-ghost(type="button" onclick="closeModal('modal-create')") Huỷ
-          button.btn.btn-primary(type="button" onclick="submitCreate()")
-            i.fas.fa-save
-            |  Tạo key
-
-    //- ── MODAL: Sửa key ──
-    #modal-edit.modal-overlay(onclick="if(event.target===this)closeModal('modal-edit')")
-      .modal
-        .modal-title
-          i.fas.fa-edit(style="color:var(--primary);margin-right:8px")
-          | Sửa key
-        #form-edit
-          input#e-id(type="hidden")
-          .row
-            .field
-              label Value (Key)
-              input#e-value(type="text" disabled style="opacity:.5")
-            .field
-              label Số thiết bị tối đa
-              input#e-max(type="number" min="1")
-          .row
-            .field
-              label Họ tên
-              input#e-ten(type="text")
-            .field
-              label Số điện thoại
-              input#e-sdt(type="text")
-          .row
-            .field
-              label Ngày hết hạn
-              input#e-expires(type="date")
-            .field
-              label Trạng thái
-              select#e-active
+              label(for="f-max") Số thiết bị tối đa
+              input#f-max.input(type="number" value="1" min="1" max="1000" required)
+            #f-active-wrap.field(hidden)
+              label(for="f-active") Trạng thái
+              select#f-active.input
                 option(value="true") Đang bật
                 option(value="false") Tắt
+          .field
+            label(for="f-expires") Ngày hết hạn
+            .row(style="align-items:center")
+              input#f-expires.input(type="date")
+              label.check
+                input#f-forever(type="checkbox")
+                | Vĩnh viễn (không hết hạn)
+            .chips#expiry-presets
+              button.chip(type="button" data-days="7") +7 ngày
+              button.chip(type="button" data-days="30") +30 ngày
+              button.chip(type="button" data-days="90") +90 ngày
+              button.chip(type="button" data-days="365") +1 năm
+            .hint Key hết hạn vào 23:59 ngày đã chọn (giờ Việt Nam)
         .modal-footer
-          button.btn.btn-ghost(type="button" onclick="closeModal('modal-edit')") Huỷ
-          button.btn.btn-primary(type="button" onclick="submitEdit()")
-            i.fas.fa-save
-            |  Lưu
+          button.btn.btn-ghost(type="button" data-close="modal-key") Huỷ
+          button#btn-save.btn.btn-primary(type="submit" form="form-key")
+            i.fas.fa-check
+            span#btn-save-text Tạo key
+
+    //- ── MODAL: Key vừa tạo ──
+    #modal-created.modal-overlay
+      .modal.modal-sm
+        .modal-head
+          .m-icon(style="background:var(--success-l);color:var(--success)"): i.fas.fa-circle-check
+          div
+            h3 Đã tạo key
+            p#created-for
+        .modal-body
+          .created-key
+            .lbl Key kích hoạt
+            #created-val.val
+        .modal-footer
+          button.btn.btn-ghost(type="button" data-close="modal-created") Đóng
+          button#btn-copy-created.btn.btn-primary(type="button")
+            i.far.fa-copy
+            | Copy key
 
     //- ── MODAL: Xem devices ──
-    #modal-devices.modal-overlay(onclick="if(event.target===this)closeModal('modal-devices')")
+    #modal-devices.modal-overlay
       .modal
-        .modal-title
-          i.fas.fa-laptop(style="color:var(--primary);margin-right:8px")
-          | Thiết bị đã đăng ký
-        #device-list
+        .modal-head
+          .m-icon: i.fas.fa-laptop
+          div
+            h3 Thiết bị đã đăng ký
+            p#devices-sub
+          button.icon-btn(type="button" data-close="modal-devices" title="Đóng"): i.fas.fa-xmark
+        #device-list.modal-body
         .modal-footer
-          button.btn.btn-ghost(type="button" onclick="closeModal('modal-devices')") Đóng
-          button.btn.btn-danger(type="button" id="btn-reset-devices")
-            i.fas.fa-trash
-            |  Reset tất cả thiết bị
+          button.btn.btn-ghost(type="button" data-close="modal-devices") Đóng
+          button#btn-reset-devices.btn.btn-danger(type="button")
+            i.fas.fa-rotate-left
+            | Reset tất cả
+
+    //- ── MODAL: Xác nhận ──
+    #modal-confirm.modal-overlay
+      .modal.modal-sm
+        .modal-head
+          .m-icon.danger: i.fas.fa-triangle-exclamation
+          div
+            h3#confirm-title Xác nhận
+            p#confirm-msg
+        .modal-footer(style="margin-top:20px")
+          button.btn.btn-ghost(type="button" data-close="modal-confirm") Huỷ
+          button#confirm-ok.btn.btn-danger(type="button") Xác nhận
 
 block scripts
-  script.
-    // ── Devices modal ──
-    function showDevices(keyId, devices) {
-      const list = document.getElementById('device-list');
-      if (!devices.length) {
-        list.innerHTML = '<p style="color:var(--text3);font-size:13px;text-align:center;padding:20px 0">Chưa có thiết bị nào</p>';
+  script(nonce=nonce).
+    const $ = id => document.getElementById(id);
+    const TZ = 'Asia/Ho_Chi_Minh';
+
+    // Thông báo sau khi reload
+    try {
+      const f = sessionStorage.getItem('flash');
+      if (f) { sessionStorage.removeItem('flash'); toast(f); }
+    } catch (e) {}
+    function reloadWith(msg) {
+      try { sessionStorage.setItem('flash', msg); } catch (e) {}
+      location.reload();
+    }
+
+    function confirmBox(title, msg, okText = 'Xác nhận') {
+      $('confirm-title').textContent = title;
+      $('confirm-msg').textContent = msg;
+      $('confirm-ok').textContent = okText;
+      openModal('modal-confirm');
+      return new Promise(resolve => {
+        const m = $('modal-confirm');
+        const finish = v => {
+          $('confirm-ok').onclick = null;
+          m.removeEventListener('click', onBg);
+          closeModal('modal-confirm');
+          resolve(v);
+        };
+        const onBg = e => { if (e.target === m || e.target.closest('[data-close]')) finish(false); };
+        $('confirm-ok').onclick = () => finish(true);
+        m.addEventListener('click', onBg);
+      });
+    }
+
+    async function copy(text, btn) {
+      try { await navigator.clipboard.writeText(text); toast('Đã copy ' + text); }
+      catch (e) { toast('Không copy được, hãy copy thủ công', false); }
+    }
+
+    // ── Tìm kiếm / lọc ──
+    function applyFilter() {
+      const q = $('search').value.trim().toLowerCase();
+      const st = $('filter').value;
+      let shown = 0;
+      document.querySelectorAll('#key-rows tr[data-id]').forEach(tr => {
+        const ok = (!q || tr.dataset.search.includes(q)) && (st === 'all' || tr.dataset.status === st);
+        tr.hidden = !ok;
+        if (ok) shown++;
+      });
+      if ($('no-match')) $('no-match').hidden = shown > 0;
+    }
+    $('search').addEventListener('input', applyFilter);
+    $('filter').addEventListener('change', applyFilter);
+
+    // ── Form tạo / sửa ──
+    function addDays(n) {
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
+      const d = new Date(today + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + n);
+      return d.toISOString().slice(0, 10);
+    }
+    function syncForever() {
+      const f = $('f-forever').checked;
+      $('f-expires').disabled = f;
+      document.querySelectorAll('#expiry-presets .chip').forEach(c => c.disabled = f);
+    }
+    $('f-forever').addEventListener('change', syncForever);
+    $('expiry-presets').addEventListener('click', e => {
+      const c = e.target.closest('[data-days]');
+      if (!c) return;
+      // Gia hạn tính từ ngày hết hạn hiện tại (nếu còn hạn) hoặc từ hôm nay
+      const cur = $('f-expires').value;
+      const base = cur && cur > addDays(0) ? cur : addDays(0);
+      const d = new Date(base + 'T00:00:00Z');
+      d.setUTCDate(d.getUTCDate() + Number(c.dataset.days));
+      $('f-expires').value = d.toISOString().slice(0, 10);
+    });
+
+    function openKeyForm(row) {
+      const edit = !!row;
+      $('form-key').reset();
+      $('f-id').value = edit ? row.dataset.id : '';
+      $('f-value-wrap').hidden = !edit;
+      $('f-active-wrap').hidden = !edit;
+      $('m-key-title').textContent = edit ? 'Sửa key' : 'Tạo key mới';
+      $('m-key-sub').textContent = edit ? 'Cập nhật thông tin và hạn sử dụng' : 'Key sẽ được sinh ngẫu nhiên 12 ký tự';
+      $('m-key-icon').className = 'fas ' + (edit ? 'fa-pen' : 'fa-plus');
+      $('btn-save-text').textContent = edit ? 'Lưu thay đổi' : 'Tạo key';
+      if (edit) {
+        $('f-value').value = row.dataset.value;
+        $('f-ten').value = row.dataset.ten;
+        $('f-sdt').value = row.dataset.sdt;
+        $('f-max').value = row.dataset.max;
+        $('f-active').value = row.dataset.active;
+        $('f-expires').value = row.dataset.expires;
+        $('f-forever').checked = !row.dataset.expires;
       } else {
-        list.innerHTML = devices.map(d => `
-          <div class="device-item">
-            <div class="device-id">${d.deviceId}</div>
-            <div class="device-date">${new Date(d.registeredAt).toLocaleString('vi-VN')}</div>
-            <button class="btn btn-danger btn-sm" onclick="removeDevice('${keyId}','${encodeURIComponent(d.deviceId)}')">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>`).join('');
+        $('f-max').value = 1;
+        $('f-expires').value = addDays(30);
+        $('f-forever').checked = false;
       }
-      document.getElementById('btn-reset-devices').onclick = () => resetDevices(keyId);
+      syncForever();
+      openModal('modal-key');
+      setTimeout(() => $('f-ten').focus(), 50);
+    }
+
+    $('btn-create').addEventListener('click', () => openKeyForm(null));
+
+    $('form-key').addEventListener('submit', async e => {
+      e.preventDefault();
+      const id = $('f-id').value;
+      const ten = $('f-ten').value.trim();
+      const sdt = $('f-sdt').value.trim();
+      const max_devices = Number($('f-max').value);
+      const forever = $('f-forever').checked;
+      const expiresAt = forever ? null : $('f-expires').value;
+
+      if (!ten || !sdt) return toast('Vui lòng nhập họ tên và số điện thoại', false);
+      if (!Number.isInteger(max_devices) || max_devices < 1) return toast('Số thiết bị phải ≥ 1', false);
+      if (!forever && !expiresAt) return toast('Chọn ngày hết hạn hoặc tích “Vĩnh viễn”', false);
+
+      const body = { ten, sdt, max_devices, expiresAt };
+      if (id) body.active = $('f-active').value === 'true';
+
+      const btn = $('btn-save');
+      btn.disabled = true;
+      const d = await api(id ? `/admin/api/keys/${id}` : '/admin/api/keys', id ? 'PUT' : 'POST', body);
+      btn.disabled = false;
+      if (!d.ok) return toast(d.message || 'Có lỗi xảy ra', false);
+
+      closeModal('modal-key');
+      if (id) return reloadWith('Đã lưu thay đổi');
+      $('created-for').textContent = 'Cho ' + ten;
+      $('created-val').textContent = d.data.value;
+      openModal('modal-created');
+    });
+
+    $('btn-copy-created').addEventListener('click', e => copy($('created-val').textContent, e.currentTarget));
+    $('modal-created').addEventListener('click', e => {
+      if (e.target === e.currentTarget || e.target.closest('[data-close]')) location.reload();
+    });
+
+    // ── Devices ──
+    function showDevices(row) {
+      const keyId = row.dataset.id;
+      const devices = JSON.parse(row.dataset.devices);
+      const list = $('device-list');
+      $('devices-sub').textContent = `${row.dataset.value} · ${devices.length}/${row.dataset.max} thiết bị`;
+      list.replaceChildren();
+      if (!devices.length) {
+        const p = document.createElement('p');
+        p.className = 'muted';
+        p.style.cssText = 'text-align:center;padding:20px 0';
+        p.textContent = 'Chưa có thiết bị nào';
+        list.append(p);
+      }
+      devices.forEach(dv => {
+        const item = document.createElement('div');
+        item.className = 'device-item';
+        const ic = document.createElement('i');
+        ic.className = 'fas fa-desktop';
+        const info = document.createElement('div');
+        info.className = 'device-info';
+        const idEl = document.createElement('div');
+        idEl.className = 'device-id';
+        idEl.textContent = dv.deviceId;
+        const dt = document.createElement('div');
+        dt.className = 'device-date';
+        dt.textContent = 'Đăng ký ' + new Date(dv.registeredAt).toLocaleString('vi-VN', { timeZone: TZ });
+        info.append(idEl, dt);
+        const del = document.createElement('button');
+        del.type = 'button';
+        del.className = 'icon-btn danger';
+        del.title = 'Xoá thiết bị';
+        del.innerHTML = '<i class="fas fa-xmark"></i>';
+        del.addEventListener('click', () => removeDevice(keyId, dv.deviceId));
+        item.append(ic, info, del);
+        list.append(item);
+      });
+      $('btn-reset-devices').onclick = () => resetDevices(keyId);
       openModal('modal-devices');
     }
 
     async function removeDevice(keyId, deviceId) {
-      if (!confirm('Xoá device này?')) return;
-      const r = await fetch(`/admin/api/keys/${keyId}/devices/${deviceId}`, { method: 'DELETE' });
-      const d = await r.json();
-      if (d.ok) { alert('Đã xoá device'); location.reload(); }
-      else alert('Lỗi: ' + d.message);
+      if (!await confirmBox('Xoá thiết bị?', 'Thiết bị này sẽ phải kích hoạt lại để sử dụng key.', 'Xoá')) return;
+      const d = await api(`/admin/api/keys/${keyId}/devices/${encodeURIComponent(deviceId)}`, 'DELETE');
+      if (d.ok) reloadWith('Đã xoá thiết bị');
+      else toast(d.message || 'Có lỗi xảy ra', false);
     }
 
     async function resetDevices(keyId) {
-      if (!confirm('Reset toàn bộ thiết bị của key này?')) return;
-      const r = await fetch(`/admin/api/keys/${keyId}/devices`, { method: 'DELETE' });
-      const d = await r.json();
-      if (d.ok) { alert('Đã reset thiết bị'); location.reload(); }
-      else alert('Lỗi: ' + d.message);
+      if (!await confirmBox('Reset thiết bị?', 'Toàn bộ thiết bị đã đăng ký của key này sẽ bị xoá.', 'Reset')) return;
+      const d = await api(`/admin/api/keys/${keyId}/devices`, 'DELETE');
+      if (d.ok) reloadWith('Đã reset thiết bị');
+      else toast(d.message || 'Có lỗi xảy ra', false);
     }
 
-    // ── Create ──
-    async function submitCreate() {
-      const ten = document.getElementById('c-ten').value.trim();
-      const sdt = document.getElementById('c-sdt').value.trim();
-      const max_devices = document.getElementById('c-max').value;
-      const expiresAt = document.getElementById('c-expires').value;
-      if (!ten || !sdt || !max_devices) return alert('Vui lòng điền đầy đủ thông tin!');
-      const body = { ten, sdt, max_devices };
-      if (expiresAt) body.expiresAt = expiresAt;
-      const r = await fetch('/admin/api/keys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const d = await r.json();
-      if (d.ok) {
-        closeModal('modal-create');
-        // Hiện key được sinh ra để admin copy
-        const generatedKey = d.data.value;
-        showKeyCreated(generatedKey, ten);
-      } else {
-        alert('Lỗi: ' + d.message);
+    async function deleteKey(row) {
+      if (!await confirmBox('Xoá key ' + row.dataset.value + '?', 'Hành động này không thể hoàn tác.', 'Xoá key')) return;
+      const d = await api(`/admin/api/keys/${row.dataset.id}`, 'DELETE');
+      if (d.ok) reloadWith('Đã xoá key');
+      else toast(d.message || 'Có lỗi xảy ra', false);
+    }
+
+    // ── Hành động trên từng dòng ──
+    $('key-rows').addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const row = btn.closest('tr');
+      switch (btn.dataset.action) {
+        case 'copy': return copy(row.dataset.value, btn);
+        case 'edit': return openKeyForm(row);
+        case 'devices': return showDevices(row);
+        case 'reset': return resetDevices(row.dataset.id);
+        case 'delete': return deleteKey(row);
       }
-    }
-
-    function showKeyCreated(key, ten) {
-      // Tạo overlay thông báo tạm thời
-      const overlay = document.createElement('div');
-      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;display:flex;align-items:center;justify-content:center;';
-      overlay.innerHTML = `
-        <div style="background:#1a1d27;border:1px solid #2e3250;border-radius:14px;padding:32px 36px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.6)">
-          <div style="font-size:40px;margin-bottom:12px">🎉</div>
-          <div style="font-size:16px;font-weight:700;color:#e2e8f0;margin-bottom:6px">Key đã được tạo!</div>
-          <div style="font-size:13px;color:#94a3b8;margin-bottom:20px">Cho <b style="color:#e2e8f0">${ten}</b></div>
-          <div style="background:#0f1117;border:1.5px solid #6366f1;border-radius:10px;padding:14px 18px;margin-bottom:20px">
-            <div style="font-size:11px;color:#64748b;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em">Key kích hoạt</div>
-            <div id="gen-key-val" style="font-size:22px;font-weight:800;font-family:monospace;color:#6366f1;letter-spacing:.15em">${key}</div>
-          </div>
-          <div style="display:flex;gap:10px;justify-content:center">
-            <button onclick="navigator.clipboard.writeText('${key}').then(()=>{this.textContent='✔ Đã copy!';setTimeout(()=>{this.textContent='📋 Copy key'},1500)})"
-              style="background:#6366f1;color:#fff;border:none;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
-              📋 Copy key
-            </button>
-            <button onclick="this.closest('div[style*=fixed]').remove();location.reload()"
-              style="background:#22263a;color:#94a3b8;border:1px solid #2e3250;border-radius:8px;padding:9px 20px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">
-              Đóng
-            </button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-    }
-
-    // ── Edit ──
-    function editKey(id, value, ten, sdt, max_devices, active, expiresAt) {
-      document.getElementById('e-id').value = id;
-      document.getElementById('e-value').value = value;
-      document.getElementById('e-ten').value = ten;
-      document.getElementById('e-sdt').value = sdt;
-      document.getElementById('e-max').value = max_devices;
-      document.getElementById('e-active').value = String(active);
-      document.getElementById('e-expires').value = expiresAt ? expiresAt.slice(0,10) : '';
-      openModal('modal-edit');
-    }
-
-    async function submitEdit() {
-      const id = document.getElementById('e-id').value;
-      const ten = document.getElementById('e-ten').value.trim();
-      const sdt = document.getElementById('e-sdt').value.trim();
-      const max_devices = Number(document.getElementById('e-max').value);
-      const active = document.getElementById('e-active').value === 'true';
-      const expiresAt = document.getElementById('e-expires').value || null;
-      const r = await fetch(`/admin/api/keys/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ten, sdt, max_devices, active, expiresAt }),
-      });
-      const d = await r.json();
-      if (d.ok) { closeModal('modal-edit'); location.reload(); }
-      else alert('Lỗi: ' + d.message);
-    }
-
-    // ── Delete ──
-    async function deleteKey(id) {
-      if (!confirm('Xoá key này? Hành động không thể hoàn tác!')) return;
-      const r = await fetch(`/admin/api/keys/${id}`, { method: 'DELETE' });
-      const d = await r.json();
-      if (d.ok) location.reload();
-      else alert('Lỗi: ' + d.message);
-    }
+    });

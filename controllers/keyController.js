@@ -3,6 +3,7 @@
  * Xử lý toàn bộ logic nghiệp vụ liên quan đến key và device
  */
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const Key = require('../models/Key');
 
 // ─────────────────────────────────────────────
@@ -10,12 +11,37 @@ const Key = require('../models/Key');
 // ─────────────────────────────────────────────
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 function randomKeyString() {
-    // Tạo chuỗi 12 ký tự từ bộ CHARS
-    const bytes = crypto.randomBytes(12);
-    return Array.from(bytes)
-        .map(b => CHARS[b % CHARS.length])
-        .join('');
+    // crypto.randomInt → phân phối đều, không bị lệch modulo
+    let out = '';
+    for (let i = 0; i < 12; i++) out += CHARS[crypto.randomInt(CHARS.length)];
+    return out;
 }
+
+// ─────────────────────────────────────────────
+// Helper: validate input
+// ─────────────────────────────────────────────
+const isStr = (v, max = 200) => typeof v === 'string' && v.trim().length > 0 && v.length <= max;
+const isId = (v) => mongoose.isValidObjectId(v);
+
+// "YYYY-MM-DD" → hết hạn vào cuối ngày đó theo giờ Việt Nam (23:59:59 GMT+7)
+// Trả về undefined nếu sai định dạng
+function parseExpiry(v) {
+    if (v === null || v === '') return null;
+    if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+    const d = new Date(`${v}T23:59:59.999+07:00`);
+    return isNaN(d) ? undefined : d;
+}
+
+function parseMaxDevices(v) {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 1000 ? n : undefined;
+}
+
+const PUBLIC_FIELDS_ERR = {
+    ok: false,
+    code: 'MISSING_PARAMS',
+    message: 'Thiếu keyValue hoặc deviceId',
+};
 
 async function generateUniqueKey() {
     let attempts = 0;
@@ -38,12 +64,8 @@ exports.verifyKey = async (req, res) => {
     try {
         const { keyValue, deviceId } = req.body;
 
-        if (!keyValue || !deviceId) {
-            return res.status(400).json({
-                ok: false,
-                code: 'MISSING_PARAMS',
-                message: 'Thiếu keyValue hoặc deviceId',
-            });
+        if (!isStr(keyValue, 64) || !isStr(deviceId, 256)) {
+            return res.status(400).json(PUBLIC_FIELDS_ERR);
         }
 
         const key = await Key.findOne({ value: keyValue.trim() });
@@ -105,7 +127,7 @@ exports.verifyKey = async (req, res) => {
         });
     } catch (err) {
         console.error('[verifyKey]', err);
-        return res.status(500).json({ ok: false, code: 'SERVER_ERROR', message: err.message });
+        return res.status(500).json({ ok: false, code: 'SERVER_ERROR', message: 'Lỗi server' });
     }
 };
 
@@ -120,12 +142,8 @@ exports.activateKey = async (req, res) => {
     try {
         const { keyValue, deviceId } = req.body;
 
-        if (!keyValue || !deviceId) {
-            return res.status(400).json({
-                ok: false,
-                code: 'MISSING_PARAMS',
-                message: 'Thiếu keyValue hoặc deviceId',
-            });
+        if (!isStr(keyValue, 64) || !isStr(deviceId, 256)) {
+            return res.status(400).json(PUBLIC_FIELDS_ERR);
         }
 
         const key = await Key.findOne({ value: keyValue.trim() });
@@ -168,12 +186,27 @@ exports.activateKey = async (req, res) => {
                 });
             }
 
-            // Thêm device mới vào mảng
-            key.devices.push({ deviceId, registeredAt: new Date() });
-            await key.save();
-            console.log(`[activate] Đã thêm device "${deviceId}" vào key "${keyValue}"`);
+            // Thêm device mới — atomic, tránh 2 request đồng thời vượt giới hạn
+            const updated = await Key.findOneAndUpdate(
+                {
+                    _id: key._id,
+                    'devices.deviceId': { $ne: deviceId },
+                    $expr: { $lt: [{ $size: '$devices' }, '$max_devices'] },
+                },
+                { $push: { devices: { deviceId, registeredAt: new Date() } } },
+                { new: true }
+            );
+            if (!updated) {
+                return res.status(409).json({
+                    ok: false,
+                    code: 'DEVICE_LIMIT_REACHED',
+                    message: 'Không thể đăng ký thiết bị, vui lòng thử lại',
+                });
+            }
+            key.devices = updated.devices;
+            console.log(`[activate] Đã thêm device mới vào key ${key._id}`);
         } else {
-            console.log(`[activate] Device "${deviceId}" đã đăng ký trước đó, cho qua`);
+            console.log(`[activate] Device đã đăng ký trước đó với key ${key._id}, cho qua`);
         }
 
         return res.json({
@@ -191,7 +224,7 @@ exports.activateKey = async (req, res) => {
         });
     } catch (err) {
         console.error('[activateKey]', err);
-        return res.status(500).json({ ok: false, code: 'SERVER_ERROR', message: err.message });
+        return res.status(500).json({ ok: false, code: 'SERVER_ERROR', message: 'Lỗi server' });
     }
 };
 
@@ -204,7 +237,8 @@ exports.listKeys = async (req, res) => {
         const keys = await Key.find().sort({ createdAt: -1 }).lean();
         res.json({ ok: true, data: keys });
     } catch (err) {
-        res.status(500).json({ ok: false, message: err.message });
+        console.error('[admin]', err);
+        res.status(500).json({ ok: false, message: 'Lỗi server' });
     }
 };
 
@@ -217,9 +251,14 @@ exports.listKeys = async (req, res) => {
 exports.createKey = async (req, res) => {
     try {
         const { ten, sdt, max_devices, expiresAt } = req.body;
+        const max = parseMaxDevices(max_devices);
+        const exp = parseExpiry(expiresAt ?? null);
 
-        if (!ten || !sdt || !max_devices) {
-            return res.status(400).json({ ok: false, message: 'Thiếu thông tin bắt buộc (ten, sdt, max_devices)' });
+        if (!isStr(ten) || !isStr(sdt, 30) || max === undefined) {
+            return res.status(400).json({ ok: false, message: 'Thiếu hoặc sai thông tin (họ tên, SĐT, số thiết bị 1–1000)' });
+        }
+        if (exp === undefined) {
+            return res.status(400).json({ ok: false, message: 'Ngày hết hạn không hợp lệ' });
         }
 
         // Tự động tạo key random 12 ký tự, đảm bảo không trùng
@@ -229,13 +268,14 @@ exports.createKey = async (req, res) => {
             value,
             ten: ten.trim(),
             sdt: sdt.trim(),
-            max_devices: Number(max_devices),
-            expiresAt: expiresAt ? new Date(expiresAt) : null,
+            max_devices: max,
+            expiresAt: exp,
         });
 
         res.status(201).json({ ok: true, data: key });
     } catch (err) {
-        res.status(500).json({ ok: false, message: err.message });
+        console.error('[admin]', err);
+        res.status(500).json({ ok: false, message: 'Lỗi server' });
     }
 };
 
@@ -245,20 +285,39 @@ exports.createKey = async (req, res) => {
 // ─────────────────────────────────────────────
 exports.updateKey = async (req, res) => {
     try {
+        if (!isId(req.params.id)) return res.status(400).json({ ok: false, message: 'ID không hợp lệ' });
+
         const { ten, sdt, max_devices, active, expiresAt } = req.body;
         const update = {};
-        if (ten !== undefined) update.ten = ten.trim();
-        if (sdt !== undefined) update.sdt = sdt.trim();
-        if (max_devices !== undefined) update.max_devices = Number(max_devices);
-        if (active !== undefined) update.active = Boolean(active);
-        if (expiresAt !== undefined) update.expiresAt = expiresAt ? new Date(expiresAt) : null;
+        if (ten !== undefined) {
+            if (!isStr(ten)) return res.status(400).json({ ok: false, message: 'Họ tên không hợp lệ' });
+            update.ten = ten.trim();
+        }
+        if (sdt !== undefined) {
+            if (!isStr(sdt, 30)) return res.status(400).json({ ok: false, message: 'SĐT không hợp lệ' });
+            update.sdt = sdt.trim();
+        }
+        if (max_devices !== undefined) {
+            update.max_devices = parseMaxDevices(max_devices);
+            if (update.max_devices === undefined) return res.status(400).json({ ok: false, message: 'Số thiết bị phải từ 1 đến 1000' });
+        }
+        if (active !== undefined) {
+            if (typeof active !== 'boolean') return res.status(400).json({ ok: false, message: 'Trạng thái không hợp lệ' });
+            update.active = active;
+        }
+        // Chỉ đổi ngày hết hạn khi client gửi field này (null = vĩnh viễn)
+        if (expiresAt !== undefined) {
+            update.expiresAt = parseExpiry(expiresAt);
+            if (update.expiresAt === undefined) return res.status(400).json({ ok: false, message: 'Ngày hết hạn không hợp lệ' });
+        }
 
-        const key = await Key.findByIdAndUpdate(req.params.id, update, { new: true });
+        const key = await Key.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
         if (!key) return res.status(404).json({ ok: false, message: 'Key không tìm thấy' });
 
         res.json({ ok: true, data: key });
     } catch (err) {
-        res.status(500).json({ ok: false, message: err.message });
+        console.error('[admin]', err);
+        res.status(500).json({ ok: false, message: 'Lỗi server' });
     }
 };
 
@@ -268,11 +327,13 @@ exports.updateKey = async (req, res) => {
 // ─────────────────────────────────────────────
 exports.deleteKey = async (req, res) => {
     try {
+        if (!isId(req.params.id)) return res.status(400).json({ ok: false, message: 'ID không hợp lệ' });
         const key = await Key.findByIdAndDelete(req.params.id);
         if (!key) return res.status(404).json({ ok: false, message: 'Key không tìm thấy' });
         res.json({ ok: true, message: 'Đã xoá key' });
     } catch (err) {
-        res.status(500).json({ ok: false, message: err.message });
+        console.error('[admin]', err);
+        res.status(500).json({ ok: false, message: 'Lỗi server' });
     }
 };
 
@@ -282,6 +343,7 @@ exports.deleteKey = async (req, res) => {
 // ─────────────────────────────────────────────
 exports.removeDevice = async (req, res) => {
     try {
+        if (!isId(req.params.id)) return res.status(400).json({ ok: false, message: 'ID không hợp lệ' });
         const key = await Key.findById(req.params.id);
         if (!key) return res.status(404).json({ ok: false, message: 'Key không tìm thấy' });
 
@@ -292,7 +354,8 @@ exports.removeDevice = async (req, res) => {
         const removed = before - key.devices.length;
         res.json({ ok: true, message: removed > 0 ? 'Đã xoá device' : 'Không tìm thấy device', removed });
     } catch (err) {
-        res.status(500).json({ ok: false, message: err.message });
+        console.error('[admin]', err);
+        res.status(500).json({ ok: false, message: 'Lỗi server' });
     }
 };
 
@@ -302,6 +365,7 @@ exports.removeDevice = async (req, res) => {
 // ─────────────────────────────────────────────
 exports.resetDevices = async (req, res) => {
     try {
+        if (!isId(req.params.id)) return res.status(400).json({ ok: false, message: 'ID không hợp lệ' });
         const key = await Key.findById(req.params.id);
         if (!key) return res.status(404).json({ ok: false, message: 'Key không tìm thấy' });
 
@@ -309,6 +373,7 @@ exports.resetDevices = async (req, res) => {
         await key.save();
         res.json({ ok: true, message: 'Đã reset tất cả thiết bị' });
     } catch (err) {
-        res.status(500).json({ ok: false, message: err.message });
+        console.error('[admin]', err);
+        res.status(500).json({ ok: false, message: 'Lỗi server' });
     }
 };

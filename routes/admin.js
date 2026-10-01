@@ -6,7 +6,17 @@
 const express = require('express');
 const router = express.Router();
 const ctrl = require('../controllers/keyController');
-const { requireAdmin } = require('../middleware/auth');
+const Key = require('../models/Key');
+const auth = require('../middleware/auth');
+const { requireAdmin } = auth;
+const { csrfToken, verifyCsrf } = require('../middleware/security');
+
+// Token CSRF cho mọi view
+router.use((req, res, next) => {
+    res.locals.csrfToken = csrfToken(req);
+    next();
+});
+router.use(verifyCsrf);
 
 // ── Auth ──
 router.get('/login', (req, res) => {
@@ -15,25 +25,41 @@ router.get('/login', (req, res) => {
 });
 
 router.post('/login', (req, res) => {
-    const { username, password } = req.body;
-    if (
-        username === process.env.ADMIN_USER &&
-        password === process.env.ADMIN_PASS
-    ) {
-        req.session.isAdmin = true;
-        return res.redirect('/admin');
+    const lockedMin = auth.loginLockedFor(req.ip);
+    if (lockedMin) {
+        req.flash('error', `Đăng nhập sai quá nhiều lần. Thử lại sau ${lockedMin} phút`);
+        return res.redirect('/admin/login');
     }
-    req.flash('error', 'Sai tài khoản hoặc mật khẩu');
-    res.redirect('/admin/login');
+
+    const { username, password } = req.body;
+    if (!auth.checkCredentials(username, password)) {
+        auth.recordLoginFail(req.ip);
+        console.warn(`[login] Đăng nhập thất bại từ IP ${req.ip}`);
+        req.flash('error', 'Sai tài khoản hoặc mật khẩu');
+        return res.redirect('/admin/login');
+    }
+
+    auth.clearLoginFails(req.ip);
+    // Tạo session mới để chống session fixation
+    req.session.regenerate(err => {
+        if (err) {
+            req.flash('error', 'Không tạo được phiên đăng nhập');
+            return res.redirect('/admin/login');
+        }
+        req.session.isAdmin = true;
+        req.session.save(() => res.redirect('/admin'));
+    });
 });
 
-router.get('/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/admin/login'));
+router.post('/logout', (req, res) => {
+    req.session.destroy(() => {
+        res.clearCookie('km.sid');
+        res.redirect('/admin/login');
+    });
 });
 
 // ── Dashboard (trang chính) ──
 router.get('/', requireAdmin, async (req, res) => {
-    const Key = require('../models/Key');
     try {
         const keys = await Key.find().sort({ createdAt: -1 }).lean();
         res.render('admin/index', {
@@ -42,7 +68,8 @@ router.get('/', requireAdmin, async (req, res) => {
             error: req.flash('error'),
         });
     } catch (err) {
-        res.render('admin/index', { keys: [], error: err.message, success: null });
+        console.error('[dashboard]', err);
+        res.render('admin/index', { keys: [], error: ['Không tải được danh sách key'], success: null });
     }
 });
 
